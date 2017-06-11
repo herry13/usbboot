@@ -8,6 +8,8 @@
 int signed_boot = 0;
 int verbose = 0;
 int loop = 0;
+int overlay = 0;
+char overlay_dir[18];
 char * directory = NULL;
 
 int out_ep;
@@ -33,6 +35,8 @@ void usage(int error)
 	fprintf(dest, "        -l               : Loop forever\n");
 	fprintf(dest, "        -v               : Verbose\n");
 	fprintf(dest, "        -s               : Signed using bootsig.bin\n");
+	fprintf(dest, "        -o               : Use files, except bootcode.bin, from subdirectory (USB Path)\n");
+	fprintf(dest, "                           if they exist (e.g. 1-1.3.2)\n");
 	fprintf(dest, "        -h               : This help\n");
 
 	exit(error ? -1 : 0);
@@ -47,17 +51,32 @@ libusb_device_handle * LIBUSB_CALL open_device_with_vid(
 	struct libusb_device_handle *handle = NULL;
 	uint32_t i = 0;
 	int r;
+	int j, len;
+	uint8_t path[8];
 
 	if (libusb_get_device_list(ctx, &devs) < 0)
 		return NULL;
 
+	memset(overlay_dir, 0, sizeof(overlay_dir));
 	while ((dev = devs[i++]) != NULL) {
 		struct libusb_device_descriptor desc;
 		r = libusb_get_device_descriptor(dev, &desc);
 		if (r < 0)
 			goto out;
-		if(verbose == 2)
+		if (overlay) {
+			r = libusb_get_port_numbers(dev, path, sizeof(path));
+			len = snprintf(&overlay_dir[0], 18, "%d", libusb_get_bus_number(dev));
+			if (r > 0) {
+				len += snprintf(&overlay_dir[len], 18-len, "-");
+				len += snprintf(&overlay_dir[len], 18-len, "%d", path[0]);
+				for (j = 1; j < r; j++)
+					len += snprintf(&overlay_dir[len], 18-len, ".%d", path[j]);
+			}
+		}
+		if(verbose == 2) {
 			printf("Found device %u idVendor=0x%04x idProduct=0x%04x\n", i, desc.idVendor, desc.idProduct);
+			printf("Bus: %d, Device: %d, Path: %s\n", libusb_get_bus_number(dev), libusb_get_device_address(dev), overlay_dir);
+		}
 		if (desc.idVendor == vendor_id) {
 			if(desc.idProduct == 0x2763 ||
 			   desc.idProduct == 0x2764)
@@ -136,8 +155,10 @@ int Initialize_Device(libusb_context ** ctx, libusb_device_handle ** usb_device)
 int ep_write(void *buf, int len, libusb_device_handle * usb_device)
 {
 	int a_len = 0;
-	int ret =
-	    libusb_control_transfer(usb_device, LIBUSB_REQUEST_TYPE_VENDOR, 0,
+	int ret;
+
+	sleep(1);
+	ret = libusb_control_transfer(usb_device, LIBUSB_REQUEST_TYPE_VENDOR, 0,
 				    len & 0xffff, len >> 16, NULL, 0, 1000);
 
 	if(ret != 0)
@@ -201,6 +222,10 @@ void get_options(int argc, char *argv[])
 		else if(strcmp(*argv, "-s") == 0)
 		{
 			signed_boot = 1;
+		}
+		else if (strcmp(*argv, "-o") == 0)
+		{
+			overlay = 1;
 		}
 		else
 		{
@@ -290,6 +315,11 @@ FILE * check_file(char * dir, char *fname)
 	{
 		strcpy(path, dir);
 		strcat(path, "/");
+		if(overlay && (strlen(overlay_dir) > 0))
+		{
+			strcat(path, overlay_dir);
+			strcat(path, "/");
+		}
 		strcat(path, fname);
 		fp = fopen(path, "rb");
 	}
@@ -300,6 +330,7 @@ FILE * check_file(char * dir, char *fname)
 		strcat(path, fname);
 		fp = fopen(path, "rb");
 	}
+	printf("Opened file %s\n", path);
 
 	return fp;
 }
