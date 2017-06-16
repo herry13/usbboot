@@ -322,6 +322,7 @@ FILE * check_file(char * dir, char *fname)
 		}
 		strcat(path, fname);
 		fp = fopen(path, "rb");
+    if(fp == NULL) printf("Not found: %s\n", path);
 	}
 
 	if(fp == NULL)
