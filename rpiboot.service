@@ -1,0 +1,21 @@
+#
+# Unit file for running RPi Boot as a systemd service
+#
+# To install:
+# - copy this file to /etc/systemd/system
+# - enable this unit: `systemctl daemon-reload && systemctl enable rpiboot`
+#
+
+[Unit]
+Description=RPi Boot for Pi0s
+Wants=network.target
+Before=network.target
+
+[Service]
+Type=simple
+PIDFile=/run/rpiboot.pid
+ExecStart=/usr/bin/rpiboot -l -v -o -d /var/lib/rpiboot
+
+[Install]
+WantedBy=multi-user.target
+Alias=rpiboot
